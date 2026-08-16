@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pixelgate Demo v2</title>
+<style>
+html,body{margin:0;background:#0d1020;color:#eef2ff;font-family:system-ui,-apple-system,sans-serif}
+main{max-width:980px;margin:auto;padding:20px}
+h1{margin:0 0 6px}
+p{color:#b8c0df}
+.panel{background:#171b31;border:1px solid #30385e;border-radius:14px;padding:12px}
+.toolbar{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+button{background:#293154;color:white;border:1px solid #495487;border-radius:8px;padding:8px 12px}
+canvas{display:block;width:100%;height:auto;background:#111527;border-radius:10px;image-rendering:pixelated;touch-action:none;cursor:crosshair}
+.info{font-size:14px;color:#bdc6e8;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+<h1>Pixelgate</h1>
+<p>Bewege die Maus über das Spielfeld und halte die linke Maustaste gedrückt. Die Figur läuft in Richtung des Mauszeigers. Kisten lassen sich auf Druckplatten schieben.</p>
+<div class="panel">
+  <div class="toolbar">
+    <div>Level <b id="lvl">1</b> · Züge <b id="moves">0</b> · Platten <b id="plates">0/0</b></div>
+    <div>
+      <button id="reset">Neu starten</button>
+      <button id="next">Nächstes Level</button>
+    </div>
+  </div>
+  <canvas id="c" width="800" height="480"></canvas>
+  <div class="info">Gelb = Druckplatte · Braun = Kiste · Violett = Tor · Grün = Spieler. Sobald alle Platten gedrückt sind, öffnet sich das Tor.</div>
+</div>
+</main>
+<script>
+"use strict";
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+const W=16,H=10,S=50;
+
+const LEVELS=[
+[
+"################",
+"#..............#",
+"#..P...........#",
+"#..............#",
+"#.....B........#",
+"#........o.....#",
+"#..............#",
+"#..........G...#",
+"#..............#",
+"################"
+],
+[
+"################",
+"#..............#",
+"#..P....B......#",
+"#..............#",
+"#.....####.....#",
+"#..o.......o...#",
+"#......B.......#",
+"#..........G...#",
+"#..............#",
+"################"
+],
+[
+"################",
+"#..P...........#",
+"#......B.......#",
+"#..###.........#",
+"#..o...........#",
+"#.........B....#",
+"#......o.......#",
+"#..........G...#",
+"#..............#",
+"################"
+]
+];
+
+let level=0,grid=[],player={x:1,y:1},boxes=[],plates=[],gates=[],moves=0,win=false;
+let pointer={x:0,y:0,down:false};
+
+function load(i){
+  level=(i+LEVELS.length)%LEVELS.length;
+  grid=LEVELS[level].map(r=>r.split(""));
+  boxes=[];plates=[];gates=[];moves=0;win=false;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    let t=grid[y][x];
+    if(t==="P"){player={x,y};grid[y][x]="."}
+    if(t==="B"){boxes.push({x,y});grid[y][x]="."}
+    if(t==="o"){plates.push({x,y});grid[y][x]="."}
+    if(t==="G"){gates.push({x,y});grid[y][x]="."}
+  }
+  update();draw();
+}
+function boxIndex(x,y){return boxes.findIndex(b=>b.x===x&&b.y===y)}
+function gateOn(x,y){return gates.some(g=>g.x===x&&g.y===y)}
+function plateActive(p){return (player.x===p.x&&player.y===p.y)||boxIndex(p.x,p.y)>=0}
+function allActive(){return plates.length>0&&plates.every(plateActive)}
+function blocked(x,y){
+  if(x<0||y<0||x>=W||y>=H)return true;
+  if(grid[y][x]==="#")return true;
+  if(gateOn(x,y)&&!allActive())return true;
+  return false;
+}
+function tryMove(dx,dy){
+  if(win)return;
+  const nx=player.x+dx,ny=player.y+dy;
+  if(blocked(nx,ny))return;
+  const bi=boxIndex(nx,ny);
+  if(bi>=0){
+    const bx=nx+dx,by=ny+dy;
+    if(blocked(bx,by)||boxIndex(bx,by)>=0)return;
+    boxes[bi].x=bx;boxes[bi].y=by;
+  }
+  player.x=nx;player.y=ny;moves++;
+  if(allActive()&&gateOn(player.x,player.y))win=true;
+  update();draw();
+}
+function update(){
+  document.getElementById("lvl").textContent=level+1;
+  document.getElementById("moves").textContent=moves;
+  document.getElementById("plates").textContent=plates.filter(plateActive).length+"/"+plates.length;
+}
+function rect(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
+function draw(){
+  rect(0,0,c.width,c.height,"#101426");
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const px=x*S,py=y*S;
+    if(grid[y][x]==="#"){
+      rect(px,py,S,S,"#313957");
+      rect(px+4,py+4,S-8,6,"#424d75");
+    }else{
+      rect(px,py,S,S,(x+y)%2?"#171c32":"#151a2e");
+    }
+  }
+  plates.forEach(p=>{
+    const on=plateActive(p);
+    rect(p.x*S+10,p.y*S+10,30,30,on?"#73e6a6":"#ffd25f");
+    rect(p.x*S+16,p.y*S+16,18,18,"#7a6730");
+  });
+  gates.forEach(g=>{
+    if(allActive()){
+      rect(g.x*S+5,g.y*S+5,5,40,"#8c7cff");
+      rect(g.x*S+40,g.y*S+5,5,40,"#8c7cff");
+    }else{
+      rect(g.x*S+5,g.y*S+5,40,40,"#55459a");
+      for(let i=0;i<4;i++)rect(g.x*S+10+i*9,g.y*S+8,4,34,"#a69aff");
+    }
+  });
+  boxes.forEach(b=>{
+    rect(b.x*S+7,b.y*S+7,36,36,"#d5934e");
+    rect(b.x*S+12,b.y*S+12,26,26,"#a96634");
+    rect(b.x*S+17,b.y*S+17,16,5,"#e8b06b");
+  });
+  rect(player.x*S+12,player.y*S+10,26,30,"#70efad");
+  rect(player.x*S+16,player.y*S+5,18,8,"#70efad");
+  rect(player.x*S+18,player.y*S+19,4,4,"#142238");
+  rect(player.x*S+28,player.y*S+19,4,4,"#142238");
+  if(win){
+    ctx.fillStyle="#090b14cc";ctx.fillRect(0,0,c.width,c.height);
+    ctx.textAlign="center";ctx.fillStyle="#70efad";ctx.font="bold 40px system-ui";
+    ctx.fillText("Level geschafft!",c.width/2,c.height/2);
+  }
+}
+function pos(e){
+  const r=c.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};
+}
+c.addEventListener("pointerdown",e=>{pointer.down=true;Object.assign(pointer,pos(e));c.setPointerCapture(e.pointerId)});
+c.addEventListener("pointermove",e=>{Object.assign(pointer,pos(e))});
+c.addEventListener("pointerup",()=>pointer.down=false);
+c.addEventListener("pointercancel",()=>pointer.down=false);
+
+let last=0;
+function tick(t){
+  if(pointer.down&&!win&&t-last>140){
+    const cx=player.x*S+S/2,cy=player.y*S+S/2;
+    const dx=pointer.x-cx,dy=pointer.y-cy;
+    if(Math.abs(dx)>12||Math.abs(dy)>12){
+      if(Math.abs(dx)>Math.abs(dy)) tryMove(dx>0?1:-1,0);
+      else tryMove(0,dy>0?1:-1);
+    }
+    last=t;
+  }
+  requestAnimationFrame(tick);
+}
+document.getElementById("reset").onclick=()=>load(level);
+document.getElementById("next").onclick=()=>load(level+1);
+window.addEventListener("keydown",e=>{
+  const m={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1],a:[-1,0],d:[1,0],w:[0,-1],s:[0,1]};
+  if(m[e.key]){e.preventDefault();tryMove(...m[e.key])}
+});
+load(0);requestAnimationFrame(tick);
+</script>
+</body>
+</html>
